@@ -1,29 +1,6 @@
 var fs = require('fs');
 var path = require('path');
 var url = require('url');
-var request = require("request");
-
-/*
- var SISEDB = require('sise-db')
- var db = new SISEDB()
-
- var migrationPath=path.join(__dirname,'../node_modules/sise-db/test/migrations.json')
- var buf=fs.readFileSync(migrationPath)
- var migrations=JSON.parse(buf.toString())
-
- console.log(migrations)
-
- //Loading data into db
- db.import(migrations)
-
- //console.log(db)
-
- //console.log(db.getInsurances())
-
- console.log(db.getUsers())
- */
-
-//////////////////////////////////////////////////////////////////////////////////
 
 var http = require('http');
 
@@ -40,11 +17,12 @@ exports.start = function (db, callback) {
 
         var address = url.parse(req.url, true);
         var segment = address.path.split('/');
-        console.log("SEGMENT",segment);
+
         //Handle requests here
 
 
-        if (segment[1] === 'insurance' && segment.length < 3) {
+        if (req.method === 'GET' && segment[1] === 'insurance' && segment.length === 2) {
+
             console.log('Handling insurance endpoint');
 
             db.getInsurances(function (err, insurances) {
@@ -54,12 +32,12 @@ exports.start = function (db, callback) {
                 }
 
                 res.writeHead(200, {'Content-Type': 'application/json'});
-                console.log(insurances);
                 res.end(JSON.stringify(insurances))
             })
         }
 
-        else if (req.method === 'GET' && segment[1] === 'property' && segment.length < 3) {
+        else if (req.method === 'GET' && segment[1] === 'property' && segment.length === 2) {
+
             console.log('Handling property endpoint');
 
             db.getProperties(function (err, properties) {
@@ -69,101 +47,169 @@ exports.start = function (db, callback) {
                 }
 
                 res.writeHead(200, {'Content-Type': 'application/json'});
-                console.log(properties);
                 res.end(JSON.stringify(properties))
             })
         }
 
         else if (req.method === 'GET' && segment[1] === 'insurance' && segment.length === 3) {
-            console.log('Handling quotes endpoint');
 
-            db.getInsurance(segment[2], function (err, insurance) {
-
-                if (err) {
-                    throw error
-                }
-
-                res.writeHead(200, {'Content-Type': 'application/json'});
-                console.log(insurance);
-                res.end(JSON.stringify(insurance))
-
-            })
-        }
-
-        else if (req.method === 'POST' && segment[1] === 'insurance' && segment[2] === 'quote' && segment.length === 3) {
-
-            console.log('Handling quotes submission endpoint');
-
-            var payload = '';
-            var payloadUser = '';
-            var quoteId;
-
-            console.log('ola');
-
-            req.on("data", function (data) {
-
-                payload = JSON.parse(data);
-                payloadUser = payload.quote.user
-
-                //console.log(payload)
-                //console.log(payloadUser)
-                //console.log(Object.keys(payload.quote.user).length);
-
-                //payload.quote.quoteId=1
-                //console.log(payload.quote.quoteId)
+            console.log('Handling get quote endpoint');
 
 
-                db.getUser(payload.quote.user.nif, function (err, user) {
+            var requestType = segment[2].split('?');
+
+            if(requestType.length===1) {
+
+                db.getInsurance(segment[2], function (err, insurance) {
 
                     if (err) {
                         throw error
                     }
 
-                    //var quoteId;
+                    res.writeHead(200, {'Content-Type': 'application/json'});
+                    res.end(JSON.stringify(insurance))
 
-                    if (typeof user == 'undefined' || user.length === 0) {
-                        console.log("Entrei aqui 1");
+                })
+            }
 
-                        quoteId = payload.quote.user.nif + '' + 0;
-                        payload["quoteId"]=quoteId
+            else if(requestType[1].slice(0,3)==='nif'){
 
+                var nif = requestType[1].slice(4,13);
 
-                        //payload.quote.user.quotes=quoteId
+                db.getUser(nif, function (err, user) {
 
-                        payload.quote.user["quotes"] = {
-                            [quoteId]: {
-                                "insurances": payload.quote.insurances,
-                                "property": payload.quote.property
-                            }
-                        };
+                    if (err) {throw error}
 
-                        db.putUser(payloadUser);
+                    var quotes=[];
 
+                    for(i=0; i<Object.keys(user.quotes).length; i++) {
+
+                        quotes.push(user.quotes[nif + '' + i])
 
                     }
 
-
-                    //Teste
-
-                    db.getUser(payload.quote.user.nif, function (err, user) {
-
-                        console.log(user.quotes[1122334450])
-
-                    });
-
-                    console.log("payload",payload.quoteId)
                     res.writeHead(200, {'Content-Type': 'application/json'});
-                    res.end(JSON.stringify(payload))
-
+                    res.end(JSON.stringify(quotes))
 
                 })
 
+            }
+
+            else if(requestType[1].slice(0,2)==='id'){
+
+                var id = requestType[1].slice(3);
+                var nif = requestType[1].slice(3,12);
+
+                db.getUser(nif, function (err, user) {
+
+                    if (err) {throw error}
+
+                    res.writeHead(200, {'Content-Type': 'application/json'});
+                    res.end(JSON.stringify(user.quotes[id]))
+
+                })
+
+            }
+        }
+
+        else if (req.method === 'POST' && segment[1] === 'insurance' && segment[2] === 'quote' && segment.length === 3) {
+
+            console.log('Handling quote submission endpoint');
+
+            var data = '';
+            var jsonData = '';
+            var quoteId='';
+
+            req.on("data", function (chunk) {
+
+                data += chunk;
+
+            });
+
+
+            req.on("error", function (err) {
+                
+                throw error
+                
+            });
+
+            req.on("end", function() {
+
+                jsonData = JSON.parse(data);
+                //jsonDataUser = jsonData.quote.user;
+
+                db.getUser(jsonData.quote.user.nif, function (err, user) {
+
+                    if (err) {
+                        throw error
+                    }
+
+                    var userDb;
+
+                    if (typeof user == 'undefined' || user.length === 0) {
+
+                        quoteId = jsonData.quote.user.nif + '' + 0;
+
+                        jsonData.quote.user["quotes"] = {
+                            [quoteId]: {
+                                "insurances": jsonData.quote.insurances,
+                                "property": jsonData.quote.property
+                            }
+                        };
+
+                        userDb = jsonData.quote.user
+                    }
+
+                    else {
+
+                        var idSufix = Object.keys(user.quotes).length;
+
+                        quoteId = jsonData.quote.user.nif + '' + idSufix;
+
+                        var quotation={};
+
+                        quotation={
+                            [quoteId]: {
+                                "insurances": jsonData.quote.insurances,
+                                "property": jsonData.quote.property
+                            }
+                        };
+
+                        user.quotes=Object.assign(quotation,user.quotes);
+
+                        userDb=user
+                    }
+
+
+                    db.putUser(userDb, function (err) {
+
+                        if (err) {
+                            throw error
+                        }
+
+                    });
+
+                    //Test that checks if the user/user's quotation request was correctly written into the DB:
+
+                    /*db.getUser(jsonData.quote.user.nif, function (err, user) {
+
+                         console.log("DB Verification 1: ",user);
+                         console.log("DB Verification 2: ",user.quotes[quoteId])
+
+                     });*/
+
+
+                    var payload = {};
+                    payload['quoteId']=quoteId;
+
+                    res.writeHead(200, {'Content-Type': 'application/json'});
+                    res.end(JSON.stringify(payload));
+
+                })
 
             })
 
-
         }
-
 
     });
 

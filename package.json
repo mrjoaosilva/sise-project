@@ -4,9 +4,7 @@
   "description": "cweb-project",
   "main": "src/index.js",
   "dependencies": {
-    "hapi": "^13.4.1",
     "install": "^0.8.1",
-    "request": "^2.72.0",
     "sise-db": "^0.1.1",
     "sise-restful-api-tests": "^0.1.0"
   },
